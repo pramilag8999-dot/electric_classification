@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Electric Product Image Classification</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* horizontal center */
+            justify-content: center; /* vertical center */
+            min-height: 100vh; /* full height */
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        h2, h3 {
+            margin: 10px 0;
+        }
+        img {
+            margin-top: 15px;
+            max-width: 300px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Electric Product Image Classification</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">Predict</button>
+    </form>
+
+    <!-- 🔥 RESULT SECTION -->
+    {% if result %}
+        <h2 style="color:green;">
+            Predicted Image Type : {{ result }}
+        </h2>
+
+        <h3>
+            Confidence : {{ confidence }} %
+        </h3>
+
+        <!-- 🔥 IMAGE PREVIEW -->
+        {% if filename %}
+            <img src="{{ url_for('static', filename='uploads/' + filename) }}" alt="Uploaded Image">
+        {% endif %}
+    {% endif %}
+
+</body>
+</html>
