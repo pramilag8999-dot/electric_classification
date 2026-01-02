@@ -1,66 +1,68 @@
-from flask import Flask, request, render_template
-from tensorflow.keras.preprocessing import image
+from flask import Flask, render_template, request
+import numpy as np
 import os
-from werkzeug.utils import secure_filename
+import onnxruntime as ort
+from PIL import Image
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
-# ✅ Update path to static/uploads
-UPLOAD_FOLDER = "static/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+# Class labels
+class_indices = {
+    0: 'BULB',
+    1: 'CHARGER',
+    2: 'FANS'
+}
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# Load ONNX model
+model_path = "model/electric-gadget.onnx"
+session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+input_name = session.get_inputs()[0].name
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    if request.method == "POST":
-        if 'file' not in request.files:
-            return "No file part in request"
-        file = request.files['file']
-        if file.filename == '':
-            return "No file selected"
-        if not allowed_file(file.filename):
-            return "Invalid file type"
+IMG_SIZE = (224, 224)
 
-        # ✅ Save file in static/uploads
-        filename = secure_filename(file.filename)
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(path)
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    predicted_class = None
+    confidence = None
 
-        # Load image (optional, if you need to process)
-        img = image.load_img(path, target_size=(224, 224))
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return render_template('index.html', error="No file selected")
 
-        # Manual detection based on filename (same as before)
-        filename_lower = filename.lower()
-        if "f" in filename_lower:
-            label = "FAN"
-        elif "b" in filename_lower:
-            label = "BULB"
-        elif "c" in filename_lower:
-            label = "CHARGER"
-        else:
-            label = "UNKNOWN"
+        # Save uploaded image
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(image_path)
 
-        if label == "FAN":
-            confidence = "92"
-        elif label == "BULB":
-            confidence = "88"
-        elif label == "CHARGER":
-            confidence = "90"
-        else:
-            confidence = "0"
+        try:
+            # Preprocess image
+            img = Image.open(image_path).convert("RGB")
+            img = img.resize(IMG_SIZE)
 
-        return render_template(
-            "index.html",
-            result=label,
-            confidence=confidence,
-            filename=filename  # ✅ pass filename for image preview
-        )
+            img_array = np.array(img, dtype=np.float32) / 255.0
+            img_array = np.expand_dims(img_array, axis=0)
 
-    return render_template("index.html")
+            # ONNX inference
+            pred = session.run(None, {input_name: img_array})[0][0]
+
+            class_id = int(np.argmax(pred))
+            confidence = round(float(pred[class_id]) * 100, 2)
+            predicted_class = class_indices.get(class_id, "OTHER")
+
+        except Exception as e:
+            print("Prediction error:", e)
+            predicted_class = "OTHER"
+            confidence = 0.0
+
+    return render_template(
+        'index.html',
+        predicted_class=predicted_class,
+        confidence=confidence
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)
